@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pomodoro</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;1,9..144,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0d;
+    --surface: #141414;
+    --border: #2a2a2a;
+    --text: #e8e2d9;
+    --muted: #666;
+    --work: #e8614c;
+    --short: #5bc4a0;
+    --long: #5b9be8;
+    --accent: var(--work);
+    --ring-size: min(56vw, 340px);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* Grain overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0.6;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+    padding: 40px 20px;
+    animation: fadeIn 0.8s ease forwards;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Mode tabs */
+  .modes {
+    display: flex;
+    gap: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 4px;
+  }
+
+  .mode-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 8px 18px;
+    border-radius: 100px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+  }
+
+  .mode-btn.active {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 500;
+  }
+
+  /* Ring timer */
+  .ring-wrapper {
+    position: relative;
+    width: var(--ring-size);
+    height: var(--ring-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ring-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+  }
+
+  .ring-bg {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 3;
+  }
+
+  .ring-progress {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear, stroke 0.4s ease;
+    filter: drop-shadow(0 0 8px var(--accent));
+  }
+
+  .timer-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    z-index: 1;
+  }
+
+  .session-label {
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 500;
+    transition: color 0.4s;
+  }
+
+  .time-display {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(56px, 14vw, 88px);
+    font-weight: 300;
+    letter-spacing: -2px;
+    line-height: 1;
+    transition: color 0.4s;
+  }
+
+  .time-display.running {
+    color: var(--accent);
+  }
+
+  .session-count {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+
+  /* Dots */
+  .dots {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: background 0.3s;
+  }
+
+  .dot.filled {
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .btn-icon {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    transition: all 0.2s ease;
+  }
+
+  .btn-icon:hover {
+    border-color: var(--text);
+    color: var(--text);
+    background: var(--surface);
+  }
+
+  .btn-main {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+    transition: all 0.2s ease;
+    box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
+  .btn-main:hover {
+    transform: scale(1.06);
+    box-shadow: 0 0 36px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+
+  .btn-main:active { transform: scale(0.97); }
+
+  /* Settings panel */
+  .settings-toggle {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 4px;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .settings-toggle:hover { color: var(--text); }
+
+  .settings-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    width: min(360px, 92vw);
+    display: none;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .settings-panel.open { display: flex; }
+
+  .setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .setting-label {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  .setting-input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    width: 70px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .setting-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .apply-btn {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 4px;
+    transition: opacity 0.2s;
+  }
+
+  .apply-btn:hover { opacity: 0.85; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    padding: 12px 24px;
+    border-radius: 100px;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    z-index: 200;
+    white-space: nowrap;
+  }
+
+  .toast.show {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Pulse animation on session end */
+  @keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+    100% { transform: scale(1); }
+  }
+
+  .pulse { animation: pulse 0.5s ease 3; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Mode Tabs -->
+  <div class="modes">
+    <button class="mode-btn active" data-mode="work" onclick="setMode('work')">Odak</button>
+    <button class="mode-btn" data-mode="short" onclick="setMode('short')">Kısa Mola</button>
+    <button class="mode-btn" data-mode="long" onclick="setMode('long')">Uzun Mola</button>
+  </div>
+
+  <!-- Ring Timer -->
+  <div class="ring-wrapper">
+    <svg class="ring-svg" viewBox="0 0 100 100">
+      <circle class="ring-bg" cx="50" cy="50" r="46"/>
+      <circle class="ring-progress" id="ringProgress" cx="50" cy="50" r="46"/>
+    </svg>
+    <div class="timer-content">
+      <span class="session-label" id="sessionLabel">Odak Zamanı</span>
+      <div class="time-display" id="timeDisplay">25:00</div>
+      <div class="dots" id="dotsContainer"></div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn-icon" onclick="resetTimer()" title="Sıfırla">↺</button>
+    <button class="btn-main" id="playPauseBtn" onclick="toggleTimer()">▶</button>
+    <button class="btn-icon" onclick="skipSession()" title="Atla">⇥</button>
+  </div>
+
+  <!-- Settings Toggle -->
+  <button class="settings-toggle" onclick="toggleSettings()">
+    <span>⚙</span> Ayarlar
+  </button>
+
+  <!-- Settings Panel -->
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-row">
+      <span class="setting-label">Odak süresi (dk)</span>
+      <input class="setting-input" id="setWork" type="number" min="1" max="90" value="25">
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Kısa mola (dk)</span>
+      <input class="setting-input" id="setShort" type="number" min="1" max="30" value="5">
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Uzun mola (dk)</span>
+      <input class="setting-input" id="setLong" type="number" min="1" max="60" value="15">
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Uzun mola aralığı</span>
+      <input class="setting-input" id="setInterval" type="number" min="2" max="8" value="4">
+    </div>
+    <button class="apply-btn" onclick="applySettings()">Uygula</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const MODES = {
+    work:  { label: 'Odak Zamanı',  color: '#e8614c', accent: '--work' },
+    short: { label: 'Kısa Mola',    color: '#5bc4a0', accent: '--short' },
+    long:  { label: 'Uzun Mola',    color: '#5b9be8', accent: '--long'  },
+  };
+
+  let durations = { work: 25 * 60, short: 5 * 60, long: 15 * 60 };
+  let longInterval = 4;
+  let mode = 'work';
+  let timeLeft = durations.work;
+  let totalTime = durations.work;
+  let running = false;
+  let interval = null;
+  let sessionsCompleted = 0;
+
+  const ringProgress = document.getElementById('ringProgress');
+  const timeDisplay  = document.getElementById('timeDisplay');
+  const sessionLabel = document.getElementById('sessionLabel');
+  const playPauseBtn = document.getElementById('playPauseBtn');
+  const dotsContainer = document.getElementById('dotsContainer');
+
+  // Ring circumference
+  const r = 46;
+  const circ = 2 * Math.PI * r;
+  ringProgress.style.strokeDasharray = circ;
+
+  function updateRing() {
+    const progress = timeLeft / totalTime;
+    const offset = circ * (1 - progress);
+    ringProgress.style.strokeDashoffset = offset;
+  }
+
+  function updateDisplay() {
+    const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+    const s = (timeLeft % 60).toString().padStart(2, '0');
+    timeDisplay.textContent = `${m}:${s}`;
+    updateRing();
+    // Update page title
+    document.title = `${m}:${s} — Pomodoro`;
+  }
+
+  function updateDots() {
+    dotsContainer.innerHTML = '';
+    for (let i = 0; i < longInterval; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'dot' + (i < sessionsCompleted % longInterval ? ' filled' : '');
+      dotsContainer.appendChild(dot);
+    }
+  }
+
+  function setMode(m, auto = false) {
+    mode = m;
+    timeLeft = durations[m];
+    totalTime = durations[m];
+    running = false;
+    clearInterval(interval);
+    playPauseBtn.textContent = '▶';
+    timeDisplay.classList.remove('running');
+
+    // Update accent color
+    const color = MODES[m].color;
+    document.documentElement.style.setProperty('--accent', color);
+    sessionLabel.textContent = MODES[m].label;
+
+    // Update active tab
+    document.querySelectorAll('.mode-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === m);
+    });
+
+    updateDisplay();
+    if (!auto) updateDots();
+  }
+
+  function toggleTimer() {
+    if (running) {
+      running = false;
+      clearInterval(interval);
+      playPauseBtn.textContent = '▶';
+      timeDisplay.classList.remove('running');
+    } else {
+      running = true;
+      playPauseBtn.textContent = '⏸';
+      timeDisplay.classList.add('running');
+      interval = setInterval(tick, 1000);
+    }
+  }
+
+  function tick() {
+    timeLeft--;
+    updateDisplay();
+    if (timeLeft <= 0) {
+      clearInterval(interval);
+      running = false;
+      playPauseBtn.textContent = '▶';
+      timeDisplay.classList.remove('running');
+      onSessionEnd();
+    }
+  }
+
+  function onSessionEnd() {
+    timeDisplay.classList.add('pulse');
+    setTimeout(() => timeDisplay.classList.remove('pulse'), 1600);
+
+    if (mode === 'work') {
+      sessionsCompleted++;
+      updateDots();
+      if (sessionsCompleted % longInterval === 0) {
+        showToast('🎉 Uzun mola zamanı!');
+        setTimeout(() => setMode('long', true), 800);
+      } else {
+        showToast('☕ Kısa mola zamanı!');
+        setTimeout(() => setMode('short', true), 800);
+      }
+    } else {
+      showToast('💪 Odak zamanı!');
+      setTimeout(() => setMode('work', true), 800);
+    }
+
+    // Browser notification
+    if (Notification.permission === 'granted') {
+      new Notification('Pomodoro', { body: sessionLabel.textContent + ' bitti!' });
+    }
+  }
+
+  function resetTimer() {
+    running = false;
+    clearInterval(interval);
+    timeLeft = durations[mode];
+    totalTime = durations[mode];
+    playPauseBtn.textContent = '▶';
+    timeDisplay.classList.remove('running');
+    updateDisplay();
+  }
+
+  function skipSession() {
+    running = false;
+    clearInterval(interval);
+    timeLeft = 0;
+    updateDisplay();
+    onSessionEnd();
+  }
+
+  function toggleSettings() {
+    const panel = document.getElementById('settingsPanel');
+    panel.classList.toggle('open');
+  }
+
+  function applySettings() {
+    const w = parseInt(document.getElementById('setWork').value) || 25;
+    const s = parseInt(document.getElementById('setShort').value) || 5;
+    const l = parseInt(document.getElementById('setLong').value) || 15;
+    const iv = parseInt(document.getElementById('setInterval').value) || 4;
+
+    durations = { work: w * 60, short: s * 60, long: l * 60 };
+    longInterval = iv;
+    setMode(mode);
+    updateDots();
+    document.getElementById('settingsPanel').classList.remove('open');
+    showToast('✓ Ayarlar kaydedildi');
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2800);
+  }
+
+  // Request notification permission
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+
+  // Init
+  updateDisplay();
+  updateDots();
+</script>
+</body>
+</html>
